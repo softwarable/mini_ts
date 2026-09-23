@@ -1,0 +1,38 @@
+{
+  "name": "mini",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "A tiny single-file UI library: signals, templates, web components, behaviors and htmx-style fetch.",
+  "main": "dist/mini.js",
+  "module": "dist/mini.js",
+  "types": "dist/mini.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/mini.d.ts",
+      "import": "./dist/mini.js"
+    }
+  },
+  "files": [
+    "dist",
+    "mini.ts"
+  ],
+  "scripts": {
+    "dev": "vite",
+    "test": "vitest run",
+    "test:unit": "vitest run --project unit",
+    "test:browser": "vitest run --project browser",
+    "test:watch": "vitest --project unit",
+    "typecheck": "tsc --noEmit",
+    "build": "vite build && tsc -p tsconfig.build.json",
+    "size": "node scripts/size.mjs"
+  },
+  "devDependencies": {
+    "@vitest/browser-playwright": "^5.0.1",
+    "happy-dom": "^20.14.5",
+    "playwright": "1.59.1",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.0",
+    "vitest": "^5.0.1"
+  }
+}

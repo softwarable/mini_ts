@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="csrf-token" content="demo-token" />
+    <title>mini.ts demo</title>
+    <style>
+      :root {
+        --bg: #f7f7f5;
+        --card: #fff;
+        --fg: #1d1d1b;
+        --muted: #6b6b66;
+        --line: #e4e4df;
+        --accent: #2f5bd3;
+        color-scheme: light dark;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #151514;
+          --card: #1e1e1c;
+          --fg: #ececea;
+          --muted: #9a9a94;
+          --line: #33332f;
+          --accent: #7a9bff;
+        }
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font: 15px/1.5 system-ui, sans-serif;
+        background: var(--bg);
+        color: var(--fg);
+      }
+      main { max-width: 860px; margin: 0 auto; padding: 32px 16px 64px; }
+      h1 { margin: 0 0 4px; font-size: 26px; }
+      h2 { margin: 0 0 4px; font-size: 17px; }
+      p.lead { color: var(--muted); margin: 0 0 24px; }
+      section.card {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 18px 20px;
+        margin-bottom: 16px;
+      }
+      section.card > p { color: var(--muted); margin: 0 0 12px; font-size: 14px; }
+      code { font-size: 13px; background: color-mix(in srgb, var(--fg) 7%, transparent); padding: 1px 5px; border-radius: 4px; }
+      button, input {
+        font: inherit;
+        padding: 6px 12px;
+        border-radius: 6px;
+        border: 1px solid var(--line);
+        background: var(--card);
+        color: var(--fg);
+      }
+      button { cursor: pointer; }
+      button:hover { border-color: var(--accent); }
+      button.link { border: 0; padding: 0 4px; color: var(--accent); background: none; font-size: 13px; }
+      ul { padding-left: 20px; margin: 8px 0 0; }
+      .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+      .muted { color: var(--muted); }
+      .tag { font-size: 12px; color: var(--muted); border: 1px solid var(--line); border-radius: 99px; padding: 0 8px; }
+      nav.links { display: flex; gap: 12px; flex-wrap: wrap; }
+      nav.links a { color: var(--accent); }
+      nav.links a.active { font-weight: 600; text-decoration: none; }
+      [data-loading] { opacity: 0.6; }
+      form[data-loading] button { pointer-events: none; }
+      [aria-busy='true'] { opacity: 0.5; transition: opacity 0.2s; }
+      .dropdown { position: relative; display: inline-block; }
+      .dropdown ul {
+        position: absolute; z-index: 1; margin: 4px 0 0; padding: 6px 0; list-style: none; min-width: 160px;
+        background: var(--card); border: 1px solid var(--line); border-radius: 8px;
+      }
+      .dropdown li a { display: block; padding: 4px 14px; color: var(--fg); text-decoration: none; }
+      .dropdown li a:hover { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+      .error { color: #d33; margin: 8px 0 0; }
+      .ok { color: #2a8a4a; margin: 8px 0 0; }
+      .small { font-size: 13px; }
+      ul.try { margin: 12px 0 0; padding-left: 18px; font-size: 14px; }
+      ul.try li { margin: 4px 0; }
+      details { margin-top: 10px; font-size: 14px; }
+      pre { overflow-x: auto; background: color-mix(in srgb, var(--fg) 6%, transparent); padding: 10px 12px; border-radius: 8px; }
+      .cases { display: grid; grid-template-columns: max-content 1fr; gap: 10px 14px; align-items: center; font-size: 14px; }
+      @media (max-width: 600px) { .cases { grid-template-columns: 1fr; } }
+      .out { margin-top: 12px; padding: 10px 12px; border: 1px dashed var(--line); border-radius: 8px; }
+      body { padding-bottom: 34vh; }
+      #log-panel {
+        position: fixed; left: 0; right: 0; bottom: 0; max-height: 30vh; overflow: auto;
+        background: var(--card); border-top: 1px solid var(--line); padding: 8px 16px; font-size: 13px;
+      }
+      .log-head { display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap; }
+      #log { list-style: none; margin: 6px 0 0; padding: 0; font-family: ui-monospace, monospace; }
+      #log li { padding: 2px 0; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+      #log .req { color: var(--accent); }
+      #log .event { color: var(--muted); }
+      #log .bad { color: #d33; }
+      #toast { position: fixed; top: 16px; right: 16px; background: var(--fg); color: var(--bg); padding: 8px 14px; border-radius: 8px; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>mini.ts</h1>
+      <p class="lead">Signals, templates, web components, behaviors and htmx-style fetch in one file.</p>
+
+      <section class="card">
+        <h2>1. Component with props and state</h2>
+        <p><code>&lt;mini-counter label="Clicks" count="3"&gt;</code> reads typed props from attributes and re-renders on change.</p>
+        <div class="row">
+          <mini-counter label="Clicks" count="3"></mini-counter>
+          <mini-counter label="Other"></mini-counter>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>2. Fetch JSON and loop, with conditions</h2>
+        <p><code>resource()</code> + <code>each()</code> + <code>when()</code>. Typing re-fetches (tracked signal); stale requests are aborted.</p>
+        <user-search></user-search>
+      </section>
+
+      <section class="card">
+        <h2>3. Loop links from data</h2>
+        <p><code>each(links, 'id', l =&gt; html`&lt;a href=${l.url} class=${…}&gt;`)</code> rendered with <code>render()</code> + <code>effect()</code>.</p>
+        <nav class="links" id="links"></nav>
+        <div class="row" style="margin-top: 10px">
+          <button id="shuffle">Shuffle</button>
+          <button id="add-link">Add link</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>4. data-behavior / data-action</h2>
+        <p>Behaviors attach to server-rendered HTML; actions are delegated, so new content works automatically.</p>
+        <div class="row">
+          <div class="dropdown" data-behavior="dropdown">
+            <button data-action="dropdown#toggle">Menu ▾</button>
+            <ul hidden>
+              <li><a href="#" data-action="dropdown#pick:prevent" data-value="Profile">Profile</a></li>
+              <li><a href="#" data-action="dropdown#pick:prevent" data-value="Settings">Settings</a></li>
+              <li><a href="#" data-action="dropdown#pick:prevent" data-value="Sign out">Sign out</a></li>
+            </ul>
+          </div>
+          <button data-action="copy" data-text="Copied from data-text!">Copy text</button>
+          <input placeholder="Type (data-action on input)…" data-action="mirror" />
+          <span class="muted" id="mirror"></span>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>5. htmx-style: data-get / data-post</h2>
+        <p>Server returns HTML fragments; <code>data-target</code> + <code>data-swap</code> place them.</p>
+
+        <div class="row">
+          <button data-get="/demo-api/time" data-target="#time">What time is it?</button>
+          <span id="time" class="muted">—</span>
+        </div>
+
+        <h2 style="margin-top: 18px">Live search</h2>
+        <input name="q" placeholder="Search users…" data-get="/demo-api/users.html" data-trigger="input delay:250ms" data-target="#results" />
+        <ul id="results" data-get="/demo-api/users.html" data-trigger="load"></ul>
+
+        <h2 style="margin-top: 18px">Todos</h2>
+        <form data-post="/demo-api/todos" data-target="#todos" data-swap="beforeend" data-action="submit->reset-after">
+          <div class="row">
+            <input name="text" placeholder="New todo" required />
+            <button>Add</button>
+          </div>
+        </form>
+        <ul id="todos" data-get="/demo-api/todos" data-trigger="load"></ul>
+
+      </section>
+
+      <section class="card">
+        <h2>6. Native forms with <code>data-fetch</code></h2>
+        <p>The form keeps its normal <code>action</code> and <code>method</code>. <code>data-fetch</code> sends it with fetch and swaps the reply into <code>data-target</code>. Without JavaScript it still works as a plain form.</p>
+        <form id="item-form" action="/demo-api/items" method="post" data-fetch data-target="#item-form" data-swap="outerHTML" data-swap-error="422">
+          <div class="row">
+            <input name="name" value="" placeholder="Item name" minlength="2" aria-label="Item name" />
+            <button name="op" value="save">Save</button>
+            <button formaction="/demo-api/items/preview" formmethod="get" name="op" value="preview">Preview</button>
+          </div>
+        </form>
+        <ul class="try">
+          <li><b>Type one letter, press Save.</b> The browser's own <code>minlength</code> check stops it. mini only runs on <code>submit</code>, which the browser never fires, so nothing appears in the log.</li>
+          <li><b>Clear the field, press Save.</b> The server answers <code>422</code> with the form plus an error message. Because of <code>data-swap-error="422"</code>, that HTML replaces the form (other error codes would not be swapped).</li>
+          <li><b>Type a name, press Save.</b> <code>POST /demo-api/items</code>, with the CSRF header and the clicked button's <code>op=save</code>.</li>
+          <li><b>Type a name, then press Enter twice quickly</b> (or double-click Save). Saving is slow on purpose. The form is dimmed while pending (<code>form[data-loading]</code>), and the log shows only <b>one</b> POST: a write that's still running ignores repeat submits.</li>
+          <li><b>Press Preview.</b> The button's <code>formaction</code> and <code>formmethod</code> win, so it's <code>GET /demo-api/items/preview?name=…</code>.</li>
+        </ul>
+        <details>
+          <summary>Show the HTML</summary>
+          <pre><code>&lt;form action="/demo-api/items" method="post"
+      data-fetch                  &lt;!-- use action + method above --&gt;
+      data-target="#item-form"    &lt;!-- where the reply goes --&gt;
+      data-swap="outerHTML"       &lt;!-- replace the whole form --&gt;
+      data-swap-error="422"&gt;      &lt;!-- also swap 422 replies --&gt;
+  &lt;input name="name" minlength="2"&gt;
+  &lt;button name="op" value="save"&gt;Save&lt;/button&gt;
+  &lt;button formaction="/demo-api/items/preview" formmethod="get"
+          name="op" value="preview"&gt;Preview&lt;/button&gt;
+&lt;/form&gt;</code></pre>
+        </details>
+      </section>
+
+      <section class="card">
+        <h2>7. Errors, redirects and security</h2>
+        <p>What happens when the server says no, redirects, or a URL points to another site. Watch the request log at the bottom.</p>
+        <div class="cases">
+          <button data-get="/demo-api/fail" data-target="#out7">HTTP 500</button>
+          <span>Not swapped: the box below keeps its content. <code>mini:error</code> fires (the toast).</span>
+
+          <button data-get="/demo-api/private" data-target="#out7">Expired session</button>
+          <span>The server redirects to <code>/demo-api/login</code>. mini sees <code>response.redirected</code> and sends the <b>whole page</b> there, instead of putting a login page inside the box.</span>
+
+          <button id="redirect-swap" data-get="/demo-api/old-time" data-target="#out7">Moved URL, swap anyway</button>
+          <span>Also a redirect, but this button's <code>mini:redirect</code> listener calls <code>preventDefault()</code>, so the redirected reply is swapped in normally.</span>
+
+          <button data-post="https://example.com/steal" data-target="#out7">POST to another site</button>
+          <span>Refused before sending. Nothing leaves the page, so the CSRF token can't leak.</span>
+        </div>
+        <div id="out7" class="out">Responses land here.</div>
+
+        <h2 style="margin-top: 18px">Where the CSRF token comes from</h2>
+        <div class="row">
+          <label><input type="radio" name="csrf" value="meta" data-action="csrf-mode" checked /> <code>&lt;meta name="csrf-token"&gt;</code> → header <code>X-CSRF-Token</code></label>
+          <label><input type="radio" name="csrf" value="cookie" data-action="csrf-mode" /> cookie <code>XSRF-TOKEN</code> → header <code>X-XSRF-TOKEN</code></label>
+        </div>
+        <p class="muted small">Switch, then save an item or add a todo. The log shows which header was sent. The demo server accepts either one and returns 403 without it.</p>
+      </section>
+    </main>
+    <aside id="log-panel" aria-label="Request log">
+      <div class="log-head">
+        <strong>Request log</strong>
+        <span class="muted">→ request · ← response · ★ mini event, newest first</span>
+        <button class="link" id="clear-log">clear</button>
+      </div>
+      <ol id="log"></ol>
+    </aside>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>
