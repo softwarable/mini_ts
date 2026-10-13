@@ -52,19 +52,31 @@ function flush() {
   if (flushing) return
   flushing = true
   let guard = 0
+  let loopError: Error | undefined
   try {
     while (pending.size) {
       if (++guard > 10_000) {
         pending.clear()
-        throw new Error('mini: effect loop detected (an effect keeps changing a signal it reads)')
+        loopError = new Error('mini: effect loop detected (an effect keeps changing a signal it reads)')
+        break
       }
       const e = pending.values().next().value!
       pending.delete(e)
-      e.run()
+      e.runSafely()
     }
   } finally {
     flushing = false
   }
+  // A runaway loop is a programming error in the effect currently being
+  // created, so preserve the synchronous exception used to diagnose it.
+  if (loopError) throw loopError
+}
+
+/** Report an asynchronous effect failure without blocking other queued effects. */
+function reportEffectError(error: unknown) {
+  const report = (globalThis as typeof globalThis & { reportError?: (error: unknown) => void }).reportError
+  if (typeof report === 'function') report(error)
+  else console.error('mini: effect failed', error)
 }
 
 /** Read-only reactive value. `Signal` and `computed()` both extend this. */
@@ -149,13 +161,24 @@ class Effect implements Observer {
   ) {}
   notify() {
     if (this.#disposed) return
-    if (this.schedule) this.schedule(() => this.run())
+    if (this.schedule) this.schedule(() => this.runSafely())
     else pending.add(this)
+  }
+  runSafely() {
+    try {
+      this.run()
+    } catch (error) {
+      reportEffectError(error)
+    }
   }
   run() {
     if (this.#disposed) return
     unlink(this)
-    this.#cleanup?.()
+    // Clear before invoking: if either cleanup or the next run throws, an old
+    // cleanup must never be retained and called a second time.
+    const cleanup = this.#cleanup
+    this.#cleanup = undefined
+    cleanup?.()
     const prev = current
     current = this
     // Batch writes made during the run: if fn changes a signal it read, the re-run waits
@@ -174,8 +197,9 @@ class Effect implements Observer {
     this.#disposed = true
     unlink(this)
     pending.delete(this)
-    this.#cleanup?.()
+    const cleanup = this.#cleanup
     this.#cleanup = undefined
+    cleanup?.()
   }
 }
 
@@ -196,7 +220,14 @@ export function computed<T>(fn: () => T): ReadonlySignal<T> {
  */
 export function effect(fn: () => unknown): Cleanup {
   const e = new Effect(fn)
-  e.run()
+  try {
+    e.run()
+  } catch (error) {
+    // run() may already have subscribed before failing. Do not leave an effect
+    // alive when the caller never received its disposer.
+    e.dispose()
+    throw error
+  }
   return () => e.dispose()
 }
 
@@ -339,6 +370,12 @@ function markup(strings: TemplateStringsArray): { out: string; names: Map<number
   let rawTag = ''
   const names = new Map<number, string>() // hole index -> original attribute name
 
+  const finishOpeningTag = (): S => {
+    const tag = /^[^\s/>]+/.exec(out.slice(tagStart))?.[0].toLowerCase() ?? ''
+    rawTag = tag
+    return RAW_TEXT.has(tag) ? S.Raw : S.Text
+  }
+
   for (let i = 0; i < strings.length; i++) {
     const s = strings[i]
     for (let j = 0; j < s.length; j++) {
@@ -364,9 +401,7 @@ function markup(strings: TemplateStringsArray): { out: string; names: Map<number
           break
         case S.Tag:
           if (c === '>') {
-            const tag = /^[^\s/>]+/.exec(out.slice(tagStart) + c)?.[0].toLowerCase() ?? ''
-            state = RAW_TEXT.has(tag) ? S.Raw : S.Text
-            rawTag = tag
+            state = finishOpeningTag()
           } else if (c === '=') {
             nameEnd = out.length
             while (nameEnd > 0 && /\s/.test(out[nameEnd - 1])) nameEnd--
@@ -379,7 +414,7 @@ function markup(strings: TemplateStringsArray): { out: string; names: Map<number
         case S.AfterEq:
           if (c === '"') state = S.Dq
           else if (c === "'") state = S.Sq
-          else if (c === '>') state = S.Text
+          else if (c === '>') state = finishOpeningTag()
           else if (!/\s/.test(c)) state = S.Unq
           break
         case S.Dq:
@@ -390,7 +425,7 @@ function markup(strings: TemplateStringsArray): { out: string; names: Map<number
           break
         case S.Unq:
           if (/\s/.test(c)) state = S.Tag
-          else if (c === '>') state = S.Text
+          else if (c === '>') state = finishOpeningTag()
           break
       }
       out += c
@@ -1385,10 +1420,33 @@ function collect(el: Element, method: string, submitter?: Element | null): FormD
   if (form) for (const [k, v] of new FormData(form)) fd.append(k, v)
   const sub = submitter as HTMLButtonElement | null | undefined
   if (sub?.name) fd.append(sub.name, sub.value)
-  const field = el as HTMLInputElement
-  if (!(el instanceof HTMLFormElement) && field.name && 'value' in field) {
-    const unchecked = (field.type === 'checkbox' || field.type === 'radio') && !field.checked
-    if (!unchecked) fd.set(field.name, field.value)
+
+  // FormData(form) excludes buttons. A button that owns data-post/etc. handles
+  // its click directly rather than arriving as a SubmitEvent.submitter, so keep
+  // its action name/value alongside the rest of the enclosing form fields.
+  if (form && el instanceof HTMLButtonElement && el !== submitter && el.name) {
+    fd.append(el.name, el.value)
+  }
+  // When the enclosing form was collected, the triggering field is already in
+  // FormData (including repeated `name[]` values). Adding it again would either
+  // duplicate it or collapse the group. A standalone field needs explicit
+  // handling for multi-selects and files because `.value` represents only one
+  // value (or a fake path).
+  if (!form && !(el instanceof HTMLFormElement)) {
+    const field = el as HTMLButtonElement | HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
+    if (field.name) {
+      if (field instanceof HTMLSelectElement && field.multiple) {
+        for (const option of field.selectedOptions) fd.append(field.name, option.value)
+      } else if (field instanceof HTMLInputElement && field.type === 'file') {
+        for (const file of field.files ?? []) fd.append(field.name, file)
+      } else {
+        const unchecked =
+          field instanceof HTMLInputElement &&
+          (field.type === 'checkbox' || field.type === 'radio') &&
+          !field.checked
+        if (!unchecked) fd.append(field.name, field.value)
+      }
+    }
   }
   const vals = el.getAttribute('data-vals')
   if (vals) {
@@ -1527,7 +1585,15 @@ export async function trigger(el: Element, submitter?: Element | null): Promise<
   }
   const message = el.getAttribute('data-confirm')
   if (message && !confirm(message)) return
-  const target = resolveTarget(el)
+  let target: Element | null
+  try {
+    target = resolveTarget(el)
+  } catch (cause) {
+    emit(el, 'mini:error', {
+      error: new Error(`mini: invalid target selector "${el.getAttribute('data-target')}"`, { cause }),
+    })
+    return
+  }
   if (!target) {
     emit(el, 'mini:error', { error: new Error(`target not found: ${el.getAttribute('data-target')}`) })
     return
@@ -1804,7 +1870,46 @@ let root: Document | Element = typeof document !== 'undefined' ? document : (nul
 let observer: MutationObserver | undefined
 const listening = new Set<string>()
 const loaded = new WeakSet<Element>()
-const NON_BUBBLING = new Set(['focus', 'blur', 'mouseenter', 'mouseleave', 'pointerenter', 'pointerleave', 'load', 'error', 'toggle'])
+// Delegated listeners for these events must use capture because they do not
+// bubble from the element that emits them. Custom events still need
+// `{ bubbles: true }` unless their type is listed here.
+const NON_BUBBLING = new Set([
+  'abort',
+  'blur',
+  'canplay',
+  'canplaythrough',
+  'close',
+  'cuechange',
+  'durationchange',
+  'emptied',
+  'ended',
+  'error',
+  'focus',
+  'invalid',
+  'load',
+  'loadeddata',
+  'loadedmetadata',
+  'loadstart',
+  'mouseenter',
+  'mouseleave',
+  'pause',
+  'play',
+  'playing',
+  'pointerenter',
+  'pointerleave',
+  'progress',
+  'ratechange',
+  'scroll',
+  'scrollend',
+  'seeked',
+  'seeking',
+  'stalled',
+  'suspend',
+  'timeupdate',
+  'toggle',
+  'volumechange',
+  'waiting',
+])
 const DEFAULT_EVENTS = ['click', 'submit', 'input', 'change', 'keydown']
 
 function onEvent(e: Event) {
