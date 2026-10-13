@@ -435,17 +435,26 @@ JSON bodies are serialized for you. `FormData`, `URLSearchParams`, strings and `
 ```ts
 class UserSearch extends Component {
   q = signal('')
-  users = resource((signal) => api.get<User[]>('/users', { query: { q: this.q.value }, signal }), [])
+  users = signal<Resource<User[]> | null>(null)
+
+  mounted() {
+    // Create it on connect and dispose it on disconnect: a disposed resource can't restart,
+    // so one made as a class field would stay dead if the element is removed and re-attached.
+    const users = resource((signal) => api.get<User[]>('/users', { query: { q: this.q.value }, signal }), [])
+    this.users.value = users
+    return () => users.dispose()
+  }
 
   render() {
-    const { data, loading, error } = this.users
+    const users = this.users.value
+    if (!users) return null
+    const { data, loading, error } = users
     return html`
       <input .value=${this.q.value} @input=${(e) => (this.q.value = e.target.value)}>
       ${when(loading.value, () => html`<p>Loading…</p>`)}
       ${when(error.value, () => html`<p class="error">Failed to load</p>`)}
       <ul>${each(data.value, 'id', (u) => html`<li>${u.name}</li>`)}</ul>`
   }
-  disconnectedCallback() { super.disconnectedCallback(); this.users.dispose() }
 }
 ```
 
