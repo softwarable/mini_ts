@@ -303,6 +303,24 @@ describe('resource', () => {
     r.dispose()
   })
 
+  it('ignores a result that arrives after dispose, even if the fetcher ignores the abort signal', async () => {
+    let resolve!: (v: string) => void
+    const r = resource(() => new Promise<string>((res) => (resolve = res)))
+    r.dispose()
+    resolve('late')
+    await settle()
+    expect(r.data.value).toBeUndefined()
+  })
+
+  it('ignores an error that arrives after dispose', async () => {
+    let reject!: (e: Error) => void
+    const r = resource(() => new Promise<string>((_, rej) => (reject = rej)))
+    r.dispose()
+    reject(new Error('late'))
+    await settle()
+    expect(r.error.value).toBe(null)
+  })
+
   it('captures errors and keeps the previous data', async () => {
     let fail = false
     handler = () => (fail ? jsonRes({}, { status: 500 }) : jsonRes('ok'))

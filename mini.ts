@@ -34,8 +34,36 @@ function track(subs: Set<Observer>) {
 }
 
 function unlink(o: Observer) {
-  for (const subs of o.deps) subs.delete(o)
+  for (const subs of o.deps) {
+    subs.delete(o)
+    if (subs.size === 0) {
+      const owner = owners.get(subs)
+      if (owner) scheduleRelease(owner)
+    }
+  }
   o.deps.clear()
+}
+
+// A computed with no subscribers lets go of its sources, so a long-lived signal doesn't keep
+// every computed that ever read it alive. Release waits a microtask: an effect re-running drops
+// its subscriptions and takes them again synchronously, and must not lose the cached value.
+const owners = new WeakMap<Set<Observer>, Computed<unknown>>()
+const releasing = new Set<Computed<unknown>>()
+let releaseQueued = false
+
+function scheduleRelease(c: Computed<unknown>) {
+  releasing.add(c)
+  if (releaseQueued) return
+  releaseQueued = true
+  queueMicrotask(() => {
+    releaseQueued = false
+    // Releasing one computed can leave its own computed sources unused: they are added
+    // to the set while it is being iterated, and visited in the same pass.
+    for (const r of releasing) {
+      releasing.delete(r)
+      r.releaseIfUnused()
+    }
+  })
 }
 
 function notifyAll(subs: Set<Observer>) {
@@ -118,6 +146,13 @@ class Computed<T> extends ReadonlySignal<T> implements Observer {
   #error: { e: unknown } | undefined
   constructor(private fn: () => T) {
     super()
+    owners.set(this.#subs, this as Computed<unknown>)
+  }
+  /** @internal Drop the subscriptions to its sources if nothing reads it anymore. */
+  releaseIfUnused() {
+    if (this.#subs.size || !this.deps.size) return
+    unlink(this)
+    this.#dirty = true
   }
   notify() {
     if (this.#dirty) return
@@ -144,6 +179,8 @@ class Computed<T> extends ReadonlySignal<T> implements Observer {
       }
       this.#dirty = false
     }
+    // Read outside any effect: don't stay subscribed to the sources (until something subscribes).
+    if (!this.#subs.size && this.deps.size) scheduleRelease(this as Computed<unknown>)
     if (this.#error) throw this.#error.e
     return this.#v
   }
@@ -1857,6 +1894,9 @@ export function resource<T>(fetcher: (signal: AbortSignal) => Promise<T>, initia
     dispose() {
       fx.dispose()
       ctrl?.abort()
+      // A fetcher that ignores the abort signal can still settle later: with no current
+      // request, its result no longer matches and is dropped.
+      ctrl = undefined
     },
   }
 }

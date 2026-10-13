@@ -38,6 +38,8 @@ count.peek()                               // same
 
 Effects run synchronously after a write. An effect that keeps changing a signal it reads throws `mini: effect loop detected`.
 
+A `computed` is lazy and cached. Once nothing reads it anymore (its effects were stopped, or it was only read outside an effect), it lets go of its sources at the next microtask, so a long-lived signal doesn't keep it alive. Reading it again recomputes it and subscribes again.
+
 ## Templates
 
 ```ts
@@ -447,7 +449,7 @@ class UserSearch extends Component {
 }
 ```
 
-Signals read before the fetcher's first `await` are tracked. When they change, it re-fetches and aborts the old request. Inside the fetcher, read `data` with `.peek()`, or it will loop. `reload()` fetches again, and `dispose()` stops tracking.
+Signals read before the fetcher's first `await` are tracked. When they change, it re-fetches and aborts the old request. Inside the fetcher, read `data` with `.peek()`, or it will loop. `reload()` fetches again, and `dispose()` stops tracking and aborts the request in flight. After `dispose()`, a late result or error is ignored, even if the fetcher ignored the abort signal.
 
 ## Startup
 

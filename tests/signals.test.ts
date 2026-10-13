@@ -1,5 +1,22 @@
+import { setFlagsFromString } from 'node:v8'
+import { runInNewContext } from 'node:vm'
 import { describe, expect, it, vi } from 'vitest'
-import { batch, computed, effect, signal, untrack } from '../mini'
+import { batch, computed, effect, signal, tick, untrack } from '../mini'
+
+setFlagsFromString('--expose_gc')
+const gc = runInNewContext('gc') as () => void
+
+/**
+ * True once `ref`'s target has been garbage collected. Build and drop the objects inside a
+ * synchronous helper: a suspended async test can keep temporaries alive in its own frame.
+ */
+async function collected(ref: WeakRef<object>): Promise<boolean> {
+  for (let i = 0; i < 5; i++) {
+    await tick()
+    gc()
+  }
+  return ref.deref() === undefined
+}
 
 describe('signals', () => {
   it('reads and writes', () => {
@@ -76,6 +93,61 @@ describe('signals', () => {
     })
     last.value = 'Byron'
     expect(seen).toEqual(['Ada Lovelace', 'Ada Byron'])
+  })
+
+  it('a computed is released by its sources once its last effect is disposed', async () => {
+    const source = signal(1)
+    const ref = (() => {
+      const c = computed(() => source.value * 2)
+      const dispose = effect(() => {
+        c.value
+      })
+      dispose()
+      return new WeakRef(c)
+    })()
+    expect(await collected(ref)).toBe(true)
+  })
+
+  it('a computed read outside any effect does not stay subscribed to its sources', async () => {
+    const source = signal(1)
+    const ref = (() => {
+      const c = computed(() => source.value + 1)
+      expect(c.value).toBe(2)
+      return new WeakRef(c)
+    })()
+    expect(await collected(ref)).toBe(true)
+  })
+
+  it('a released computed recomputes when read again', async () => {
+    const source = signal(1)
+    const c = computed(() => source.value * 10)
+    const dispose = effect(() => {
+      c.value
+    })
+    dispose()
+    await tick()
+    source.value = 2
+    expect(c.value).toBe(20)
+    const seen: number[] = []
+    effect(() => {
+      seen.push(c.value)
+    })
+    source.value = 3
+    expect(seen).toEqual([20, 30])
+  })
+
+  it('a computed is not recomputed when an unrelated signal re-runs its effect', () => {
+    const source = signal(1)
+    const other = signal('a')
+    const fn = vi.fn(() => source.value * 2)
+    const c = computed(fn)
+    effect(() => {
+      c.value
+      other.value
+    })
+    other.value = 'b'
+    other.value = 'c'
+    expect(fn).toHaveBeenCalledTimes(1)
   })
 
   it('batch runs effects once', () => {
