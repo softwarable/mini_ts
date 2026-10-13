@@ -476,6 +476,10 @@ Passing an element limits everything to that subtree, for example `start(documen
 
 The **request log** at the bottom is the easiest way to learn how fetch works. It lists every request (`→`, with the CSRF header if one was sent), every response (`←`, with status and whether a redirect was followed) and every mini event (`★`), newest first. The log is demo code (it wraps `window.fetch`); it isn't part of the library.
 
+## Using it from another project
+
+Import the built `dist/mini.js`, or the TypeScript source through the `source` export condition (no build step, so edits show up immediately). With Vite, add `source` to `resolve.conditions`; with TypeScript, to `customConditions`. A pnpm workspace can link a local checkout with `overrides: { mini: 'link:../mini_ts' }`.
+
 ## Development
 
 ```bash

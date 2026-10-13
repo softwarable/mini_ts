@@ -1,6 +1,6 @@
 {
   "name": "mini",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "type": "module",
   "description": "A tiny single-file UI library: signals, templates, web components, behaviors and htmx-style fetch.",
@@ -9,6 +9,7 @@
   "types": "dist/mini.d.ts",
   "exports": {
     ".": {
+      "source": "./mini.ts",
       "types": "./dist/mini.d.ts",
       "import": "./dist/mini.js"
     }
