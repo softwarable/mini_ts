@@ -614,7 +614,9 @@ class PropPart implements Part {
   set(values: unknown[]) {
     const v = values[this.i]
     const el = this.el as any
-    if (!Object.is(el[this.name], v)) el[this.name] = v
+    // read untracked: a component's prop is a signal, and the render setting it mustn't start
+    // following it (a new object each render would make it render again, and again)
+    if (!Object.is(untrack(() => el[this.name]), v)) el[this.name] = v
   }
 }
 

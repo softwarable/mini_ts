@@ -159,6 +159,37 @@ describe('Component', () => {
     expect(text(el.shadowRoot)).toBe('updated')
   })
 
+  it('a .prop given a new object on every render does not make the parent render again', async () => {
+    class Child extends Component {
+      static props = { data: { type: Object, attribute: false } }
+      declare data: { n: number }
+      render() {
+        return html`<i>${this.data?.n}</i>`
+      }
+    }
+    const child = tag('x-child')
+    define(child, Child)
+    const strings = Object.assign([`<${child} .data=`, `></${child}>`], {
+      raw: [`<${child} .data=`, `></${child}>`],
+    }) as TemplateStringsArray
+    let renders = 0
+    class Parent extends Component {
+      render() {
+        renders++
+        return html(strings, { n: 1 }) // a fresh object each time
+      }
+    }
+    const t = tag('x-parent')
+    define(t, Parent)
+    const el = document.createElement(t)
+    document.body.append(el)
+    await tick()
+    await tick()
+    await tick()
+    expect(renders).toBe(1) // the parent didn't start following the child's prop
+    expect(text(el.shadowRoot!.querySelector(child)!.shadowRoot)).toBe('1')
+  })
+
   it('passes rich data to child components with .prop', async () => {
     class Item extends Component {
       static props = { user: { type: Object, attribute: false } }
