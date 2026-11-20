@@ -1,0 +1,6 @@
+{
+  // Apps that import mini.ts as source may be non-strict: it must typecheck there too.
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "strict": false },
+  "include": ["mini.ts"]
+}

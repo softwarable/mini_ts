@@ -14,7 +14,8 @@ A personal, single-file UI library. `mini.ts` is the entire library. Keep it tha
 
 - `npm test`: runs both suites. It must pass before any change is done. Use `npm run test:unit` for quick iterations.
 - Playwright is pinned to an exact version to match the installed Chromium build. Don't bump it casually; if you do, run `npx playwright install chromium`.
-- `npm run typecheck`: must be clean.
+- `npm run typecheck`: must be clean. It checks everything strict, then `mini.ts` alone non-strict
+  (`tsconfig.loose.json`), because apps import the source and some of them aren't strict.
 - `npm run size`: check that gzip stays under **12 KB**. Mention the size change when it grows by more than 0.5 KB.
 - `npm run build`: produces `dist/mini.js` and `dist/mini.d.ts`.
 
