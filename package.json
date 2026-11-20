@@ -24,7 +24,7 @@
     "test:unit": "vitest run --project unit",
     "test:browser": "vitest run --project browser",
     "test:watch": "vitest --project unit",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.loose.json",
     "build": "vite build && tsc -p tsconfig.build.json",
     "size": "node scripts/size.mjs"
   },

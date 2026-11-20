@@ -1214,7 +1214,7 @@ export function getBehavior<T extends BehaviorInstance = BehaviorInstance>(el: E
 function destroy(inst: void | Cleanup | BehaviorInstance) {
   try {
     if (typeof inst === 'function') inst()
-    else inst?.destroy?.()
+    else (inst as BehaviorInstance | undefined)?.destroy?.()
   } catch (err) {
     console.error('mini: behavior cleanup failed', err)
   }
